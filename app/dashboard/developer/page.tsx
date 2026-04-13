@@ -19,6 +19,7 @@ export default function DeveloperDashboard() {
   const [stats, setStats] = useState<Record<string, number>>({});
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [githubSyncing, setGithubSyncing] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -36,6 +37,27 @@ export default function DeveloperDashboard() {
     }
   }, [user]);
 
+  async function handleSyncMyGithub() {
+    if (!user) return;
+    if (githubSyncing) return;
+    setGithubSyncing(true);
+    try {
+      const res = await tasksApi.developerGithubSyncAll(user);
+      const failureSummary = res.failed_details?.slice(0, 3).map(item => `${item.description}: ${item.error}`).join(" | ");
+      showToast(
+        res.failed > 0
+          ? `GitHub sync complete: created ${res.created}, failed ${res.failed}${failureSummary ? ` • ${failureSummary}` : ""}`
+          : `GitHub sync complete: created ${res.created}, failed ${res.failed}`,
+        res.failed > 0 ? "error" : "success"
+      );
+      load();
+    } catch (e: any) {
+      showToast(e.message, "error");
+    } finally {
+      setGithubSyncing(false);
+    }
+  }
+
   useEffect(() => {
     if (!user) { router.push("/login"); return; }
     if (user.role === "manager") { router.push("/dashboard/manager"); return; }
@@ -43,6 +65,7 @@ export default function DeveloperDashboard() {
   }, [user, router, load]);
 
   const urgentTasks = tasks.filter(t => t.priority === "high" && t.status !== "done");
+  const pendingGithubCount = tasks.filter(t => !t.github_issue_url && t.status !== "rejected" && t.status !== "pending_review").length;
 
   return (
     <div className="app-shell">
@@ -54,7 +77,16 @@ export default function DeveloperDashboard() {
             <h2>🏠 My Dashboard</h2>
             <p>Welcome back, {user?.username}!</p>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={load}>↻ Refresh</button>
+          <div className="topbar-actions">
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleSyncMyGithub}
+              disabled={loading || githubSyncing || pendingGithubCount === 0}
+            >
+              {loading || githubSyncing ? <span className="spinner" /> : pendingGithubCount === 0 ? "🐙 GitHub Synced" : "🐙 Sync My GitHub"}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={load}>↻ Refresh</button>
+          </div>
         </div>
 
         <div className="page-container">

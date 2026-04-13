@@ -62,9 +62,9 @@ export default function LoginPage() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-logo">
-          <span className="auth-logo-icon">🎤</span>
-          <h1>Automated Task Manager</h1>
-          <p>Meeting transcripts → AI extraction → Team dashboard</p>
+          <span className="auth-logo-icon">🟠</span>
+          <h1>Automated Task Manager Manager OS</h1>
+          <p>Meeting intelligence to AI actions to team execution</p>
         </div>
 
         <div className="auth-tabs">

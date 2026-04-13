@@ -166,7 +166,7 @@ export default function MeetingsPage() {
                   <p>Upload your first transcript</p>
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 520, overflowY: "auto", paddingRight: 4 }}>
                   {meetings.map(m => (
                     <div key={m.id} style={{
                       background: "var(--bg-elevated)",

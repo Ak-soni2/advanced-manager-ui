@@ -138,7 +138,7 @@ export default function TeamPage() {
                   <p>Add your first team member</p>
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 520, overflowY: "auto", paddingRight: 4 }}>
                   {developers.map(dev => (
                     <div key={dev.id} style={{
                       display: "flex",

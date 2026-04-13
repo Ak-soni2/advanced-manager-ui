@@ -20,15 +20,136 @@ interface ConfirmModalProps {
   developers: any[];
   onClose: () => void;
   onConfirm: (data: any) => void;
+  onAddDeveloper: (suggestedName?: string) => void;
 }
 
-function ConfirmModal({ task, developers, onClose, onConfirm }: ConfirmModalProps) {
+interface AddDevModalProps {
+  initialUsername?: string;
+  onClose: () => void;
+  onAdd: (username: string, github?: string) => Promise<void>;
+}
+
+function AddDevModal({ initialUsername, onClose, onAdd }: AddDevModalProps) {
+  const [username, setUsername] = useState(initialUsername || "");
+  const [github, setGithub] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setUsername(initialUsername || "");
+  }, [initialUsername]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!username.trim()) return;
+    setLoading(true);
+    await onAdd(username, github || undefined);
+    setLoading(false);
+  }
+
+  return (
+    <div className="modal-overlay modal-overlay-top" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">➕ Create Developer</h2>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">Developer Username</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="e.g., john_dev"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">GitHub Handle (optional)</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="e.g., johndoe"
+              value={github}
+              onChange={e => setGithub(e.target.value)}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading || !username.trim()}>
+              {loading ? <span className="spinner" /> : "Create"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmModal({ task, developers, onClose, onConfirm, onAddDeveloper }: ConfirmModalProps) {
   const [description, setDescription] = useState(task.description);
   const [priority, setPriority] = useState(task.priority || "medium");
   const [deadline, setDeadline] = useState(task.deadline || "");
   const [notes, setNotes] = useState("");
   const [selectedDevs, setSelectedDevs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [suggestedMissingName, setSuggestedMissingName] = useState<string | null>(null);
+
+  function normalizeName(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  function splitSuggestedNames(raw: string): string[] {
+    return raw
+      .split(/,|&| and |\//gi)
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => s.replace(/^@+/, ""));
+  }
+
+  function findMatchingDeveloperId(suggestedName: string): string | null {
+    const normalizedSuggested = normalizeName(suggestedName);
+    for (const dev of developers) {
+      const usernameNorm = normalizeName(dev.username || "");
+      const githubNorm = normalizeName(dev.github_handle || "");
+      if (!usernameNorm && !githubNorm) continue;
+      if (
+        usernameNorm === normalizedSuggested ||
+        githubNorm === normalizedSuggested ||
+        usernameNorm.includes(normalizedSuggested) ||
+        normalizedSuggested.includes(usernameNorm) ||
+        (githubNorm && (githubNorm.includes(normalizedSuggested) || normalizedSuggested.includes(githubNorm)))
+      ) {
+        return dev.id;
+      }
+    }
+    return null;
+  }
+
+  // Auto-select AI suggested developer if available
+  useEffect(() => {
+    if (!task.raw_assignee || developers.length === 0) return;
+
+    const suggestedNames = splitSuggestedNames(task.raw_assignee);
+    const matchedIds: string[] = [];
+    const unmatchedNames: string[] = [];
+
+    for (const suggestedName of suggestedNames) {
+      const matchedId = findMatchingDeveloperId(suggestedName);
+      if (matchedId) {
+        matchedIds.push(matchedId);
+      } else {
+        unmatchedNames.push(suggestedName);
+      }
+    }
+
+    if (matchedIds.length > 0) {
+      setSelectedDevs(Array.from(new Set(matchedIds)));
+    }
+
+    setSuggestedMissingName(unmatchedNames.length > 0 ? unmatchedNames[0] : null);
+  }, [task.raw_assignee, developers]);
 
   function toggleDev(id: string) {
     setSelectedDevs(prev =>
@@ -62,8 +183,8 @@ function ConfirmModal({ task, developers, onClose, onConfirm }: ConfirmModalProp
         {/* AI Info */}
         <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius)", padding: 14, marginBottom: 20 }}>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>AI Suggested Assignee</p>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-            {task.raw_assignee || "Unknown"} · Confidence:
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8 }}>
+            {task.raw_assignee || "Unknown"} · Confidence: <strong>{task.confidence}%</strong>
           </p>
           <ConfidenceBar confidence={task.confidence || 0} />
           {task.reasoning && (
@@ -106,8 +227,18 @@ function ConfirmModal({ task, developers, onClose, onConfirm }: ConfirmModalProp
           </div>
 
           <div className="form-group">
-            <label className="form-label">Assign To (select one or more)</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "10px 0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <label className="form-label" style={{ margin: 0 }}>Assign To (select one or more)</label>
+              <button 
+                type="button" 
+                className="btn btn-xs btn-secondary"
+                onClick={() => onAddDeveloper(suggestedMissingName || undefined)}
+                style={{ padding: "4px 10px", fontSize: 12 }}
+              >
+                ➕ New Dev
+              </button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "10px 0", maxHeight: 180, overflowY: "auto", alignContent: "flex-start" }}>
               {developers.map(dev => (
                 <button
                   key={dev.id}
@@ -120,8 +251,22 @@ function ConfirmModal({ task, developers, onClose, onConfirm }: ConfirmModalProp
                 </button>
               ))}
             </div>
-            {selectedDevs.length === 0 && (
+            {selectedDevs.length === 0 && developers.length === 0 && (
+              <p style={{ fontSize: 12, color: "var(--accent-rose)" }}>No developers available. Create one first!</p>
+            )}
+            {selectedDevs.length === 0 && developers.length > 0 && (
               <p style={{ fontSize: 12, color: "var(--accent-rose)" }}>Select at least one developer</p>
+            )}
+            {suggestedMissingName && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-xs btn-secondary"
+                  onClick={() => onAddDeveloper(suggestedMissingName)}
+                >
+                  👤 Create profile for AI suggestion: {suggestedMissingName}
+                </button>
+              </div>
             )}
           </div>
 
@@ -161,6 +306,10 @@ export default function PendingTasksPage() {
   const [developers, setDevelopers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmTask, setConfirmTask] = useState<any | null>(null);
+  const [addDevModal, setAddDevModal] = useState(false);
+  const [addDevSuggestedName, setAddDevSuggestedName] = useState("");
+  const [meetingFilter, setMeetingFilter] = useState("");
+  const [meetings, setMeetings] = useState<any[]>([]);
 
   const navItems = NAV_ITEMS.map(item =>
     item.href === "/dashboard/manager/pending"
@@ -171,12 +320,18 @@ export default function PendingTasksPage() {
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const [t, d] = await Promise.all([
+      const [t, d, m] = await Promise.all([
         tasksApi.pending(user),
         authApi.getDevelopers(user),
+        tasksApi.managerAll(user),
       ]);
       setTasks(t);
       setDevelopers(d);
+      // Get unique meetings from tasks
+      const uniqueMeetings = Array.from(new Map(
+        t.map(task => [task.meeting_id, { id: task.meeting_id, title: task.meeting_title }])
+      ).values());
+      setMeetings(uniqueMeetings);
     } catch (e: any) {
       showToast(e.message, "error");
     } finally {
@@ -211,16 +366,20 @@ export default function PendingTasksPage() {
     }
   }
 
-  async function handleGitHubSync(task: any) {
-    const dev = developers.find(d => d.id === task.assigned_to);
+  async function handleAddDeveloper(username: string, github?: string) {
     try {
-      const res = await tasksApi.githubSync(user!, task.id, dev?.github_handle);
-      showToast(`GitHub issue created! 🐙`, "success");
-      window.open(res.github_issue_url, "_blank");
+      await authApi.createDeveloper(user!, { username, github_handle: github });
+      showToast(`Developer ${username} created! 🎉`, "success");
+      setAddDevModal(false);
+      load();
     } catch (e: any) {
       showToast(e.message, "error");
     }
   }
+
+  const filteredTasks = meetingFilter 
+    ? tasks.filter(t => t.meeting_id === meetingFilter)
+    : tasks;
 
   return (
     <div className="app-shell">
@@ -233,15 +392,44 @@ export default function PendingTasksPage() {
             developers={developers}
             onClose={() => setConfirmTask(null)}
             onConfirm={(data) => handleConfirm(confirmTask.id, data)}
+            onAddDeveloper={(suggestedName?: string) => {
+              setAddDevSuggestedName(suggestedName || "");
+              setAddDevModal(true);
+            }}
+          />
+        )}
+        {addDevModal && (
+          <AddDevModal
+            initialUsername={addDevSuggestedName}
+            onClose={() => {
+              setAddDevModal(false);
+              setAddDevSuggestedName("");
+            }}
+            onAdd={handleAddDeveloper}
           />
         )}
 
         <div className="topbar">
           <div className="topbar-title">
             <h2>⏳ Pending Review</h2>
-            <p>AI-extracted tasks awaiting your decision</p>
+            <p>AI-extracted tasks awaiting your decision ({filteredTasks.length})</p>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={load}>↻ Refresh</button>
+          <div className="topbar-actions">
+            {meetings.length > 0 && (
+              <select
+                className="form-select"
+                value={meetingFilter}
+                onChange={e => setMeetingFilter(e.target.value)}
+                style={{ width: 200 }}
+              >
+                <option value="">All Meetings</option>
+                {meetings.map(m => (
+                  <option key={m.id} value={m.id}>{m.title || 'Untitled'}</option>
+                ))}
+              </select>
+            )}
+            <button className="btn btn-ghost btn-sm" onClick={load}>↻ Refresh</button>
+          </div>
         </div>
 
         <div className="page-container">
@@ -249,21 +437,33 @@ export default function PendingTasksPage() {
             <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
               <div className="spinner" style={{ width: 40, height: 40 }} />
             </div>
-          ) : tasks.length === 0 ? (
+          ) : filteredTasks.length === 0 ? (
             <div className="empty-state">
               <div className="empty-state-icon">🎉</div>
               <h3>All clear!</h3>
-              <p>No tasks pending review. Upload a meeting to extract new tasks.</p>
+              <p>{meetingFilter ? "No tasks for this meeting." : "No tasks pending review. Upload a meeting to extract new tasks."}</p>
               <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => router.push("/dashboard/manager/meetings")}>
                 🎤 Upload Meeting
               </button>
             </div>
           ) : (
             <div className="tasks-grid">
-              {tasks.map(task => (
+              {filteredTasks.map(task => (
                 <div key={task.id} className={`task-card priority-${task.priority}`}>
                   <div className="task-header">
-                    <p className="task-description">{task.description}</p>
+                    <div style={{ flex: 1 }}>
+                      <p className="task-description">{task.description}</p>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11, background: "var(--bg-elevated)", padding: "4px 8px", borderRadius: "var(--radius-sm)", color: "var(--text-muted)" }}>
+                          🎤 {task.meeting_title || 'Meeting'}
+                        </span>
+                        {task.deadline && (
+                          <span style={{ fontSize: 11, background: "var(--bg-elevated)", padding: "4px 8px", borderRadius: "var(--radius-sm)", color: "var(--text-muted)" }}>
+                            📅 {task.deadline}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
                       <PriorityBadge priority={task.priority} />
                     </div>
@@ -279,10 +479,8 @@ export default function PendingTasksPage() {
 
                   <div className="task-meta">
                     {task.raw_assignee && (
-                      <span className="task-meta-item">🤖 AI suggested: <strong>{task.raw_assignee}</strong></span>
+                      <span className="task-meta-item">🤖 AI suggests: <strong>{task.raw_assignee}</strong></span>
                     )}
-                    {task.deadline && <span className="task-meta-item">📅 {task.deadline}</span>}
-                    {task.meeting_title && <span className="task-meta-item">🎤 {task.meeting_title}</span>}
                   </div>
 
                   {task.reasoning && (

@@ -3,9 +3,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import Sidebar from "@/components/Sidebar";
-import { StatusBadge, PriorityBadge, ConfidenceBar, StatCard } from "@/components/Badges";
+import { StatusBadge, PriorityBadge, StatCard } from "@/components/Badges";
 import { useToast } from "@/components/Toast";
-import { tasksApi, statsApi, meetingsApi, authApi } from "@/lib/api";
+import { tasksApi, statsApi, authApi } from "@/lib/api";
 
 const NAV_ITEMS = [
   { href: "/dashboard/manager", icon: "📊", label: "Overview" },
@@ -23,16 +23,22 @@ export default function ManagerOverview() {
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [recentTasks, setRecentTasks] = useState<any[]>([]);
+  const [allTasks, setAllTasks] = useState<any[]>([]);
+  const [developers, setDevelopers] = useState<any[]>([]);
+  const [githubSyncing, setGithubSyncing] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const [s, tasks] = await Promise.all([
+      const [s, tasks, devs] = await Promise.all([
         statsApi.manager(user),
         tasksApi.managerAll(user),
+        authApi.getDevelopers(user),
       ]);
       setStats(s);
       setPendingCount(s.pending_review || 0);
+      setAllTasks(tasks);
+      setDevelopers(devs);
       setRecentTasks(tasks.slice(0, 5));
     } catch (e: any) {
       showToast(e.message, "error");
@@ -40,6 +46,27 @@ export default function ManagerOverview() {
       setLoading(false);
     }
   }, [user]);
+
+  async function handleGithubSyncAll() {
+    if (!user) return;
+    if (githubSyncing) return;
+    setGithubSyncing(true);
+    try {
+      const res = await tasksApi.githubSyncAll(user);
+      const failureSummary = res.failed_details?.slice(0, 3).map(item => `${item.description}: ${item.error}`).join(" | ");
+      showToast(
+        res.failed > 0
+          ? `GitHub sync complete: created ${res.created}, failed ${res.failed}${failureSummary ? ` • ${failureSummary}` : ""}`
+          : `GitHub sync complete: created ${res.created}, failed ${res.failed}`,
+        res.failed > 0 ? "error" : "success"
+      );
+      load();
+    } catch (e: any) {
+      showToast(e.message, "error");
+    } finally {
+      setGithubSyncing(false);
+    }
+  }
 
   useEffect(() => {
     if (!user) { router.push("/login"); return; }
@@ -52,6 +79,30 @@ export default function ManagerOverview() {
       ? { ...item, badge: pendingCount }
       : item
   );
+  const pendingGithubCount = allTasks.filter(t => !t.github_issue_url && t.status !== "rejected" && t.status !== "pending_review").length;
+  const evaluationMatrix = developers
+    .map((dev) => {
+      const devTasks = allTasks.filter((t) => t.assigned_to === dev.id);
+      const total = devTasks.length;
+      const completed = devTasks.filter((t) => t.status === "done").length;
+      const githubLinked = devTasks.filter((t) => !!t.github_issue_url).length;
+      const completionRate = total > 0 ? (completed / total) * 100 : 0;
+      const avgConfidence = total > 0
+        ? devTasks.reduce((sum, t) => sum + (Number(t.confidence) || 50), 0) / total
+        : 0;
+      const overallScore = (completionRate * 0.5) + (githubLinked * 5) + (avgConfidence * 0.2);
+
+      return {
+        developer: dev.username,
+        total,
+        completed,
+        completionRate,
+        githubLinked,
+        avgConfidence,
+        overallScore,
+      };
+    })
+    .sort((a, b) => b.overallScore - a.overallScore);
 
   return (
     <div className="app-shell">
@@ -64,6 +115,13 @@ export default function ManagerOverview() {
             <p>Real-time task management dashboard</p>
           </div>
           <div className="topbar-actions">
+            <button
+              className="btn btn-secondary"
+              onClick={handleGithubSyncAll}
+              disabled={loading || githubSyncing || pendingGithubCount === 0}
+            >
+              {loading || githubSyncing ? <span className="spinner" /> : pendingGithubCount === 0 ? "🐙 GitHub Synced" : "🐙 Sync All GitHub"}
+            </button>
             <button
               id="goto-pending-btn"
               className="btn btn-primary"
@@ -186,6 +244,61 @@ export default function ManagerOverview() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Evaluation Matrix */}
+              <div className="card" style={{ marginTop: 24 }}>
+                <div className="section-header">
+                  <h3 className="section-title">📈 Employee Evaluation Matrix</h3>
+                </div>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                  Quantitative employee evaluation based on automated task outcomes and GitHub linkage.
+                </p>
+
+                {evaluationMatrix.length === 0 ? (
+                  <div className="empty-state" style={{ padding: 28 }}>
+                    <div className="empty-state-icon">📊</div>
+                    <h3>No evaluation data yet</h3>
+                    <p>Add developers and assign tasks to populate the matrix</p>
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860, fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: "var(--bg-elevated)", textAlign: "left" }}>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Rank</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Developer</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Total Tasks</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Completed</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Completion %</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>GH Pushes</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Avg Confidence</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Overall Score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {evaluationMatrix.map((row, index) => (
+                          <tr key={row.developer} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "10px 12px", fontWeight: 700 }}>#{index + 1}</td>
+                            <td style={{ padding: "10px 12px" }}>{row.developer}</td>
+                            <td style={{ padding: "10px 12px" }}>{row.total}</td>
+                            <td style={{ padding: "10px 12px" }}>{row.completed}</td>
+                            <td style={{ padding: "10px 12px" }}>{row.completionRate.toFixed(1)}%</td>
+                            <td style={{ padding: "10px 12px" }}>{row.githubLinked}</td>
+                            <td style={{ padding: "10px 12px" }}>{row.avgConfidence.toFixed(1)}</td>
+                            <td style={{ padding: "10px 12px", fontWeight: 700, color: "var(--text-accent)" }}>
+                              {row.overallScore.toFixed(1)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <p style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
+                  Score = (Completion Rate * 0.5) + (GitHub Pushes * 5) + (Avg Task Confidence * 0.2)
+                </p>
               </div>
             </>
           )}

@@ -102,11 +102,22 @@ export const meetingsApi = {
 export const tasksApi = {
   pending: (user: User) => request<any[]>("/api/tasks/pending", { user }),
 
-  managerAll: (user: User, status?: string) =>
-    request<any[]>(`/api/tasks/manager${status ? `?status=${status}` : ""}`, { user }),
+  managerAll: (user: User, status?: string, meetingId?: string) => {
+    let url = `/api/tasks/manager?`;
+    if (status) url += `status=${status}&`;
+    if (meetingId) url += `meeting_id=${meetingId}`;
+    return request<any[]>(url, { user });
+  },
 
   developerTasks: (user: User) =>
     request<any[]>(`/api/tasks/developer/${user.id}`, { user }),
+
+  updateFull: (user: User, taskId: string, data: any) =>
+    request(`/api/tasks/${taskId}`, {
+      method: "PUT",
+      user,
+      body: JSON.stringify(data),
+    }),
 
   confirm: (
     user: User,
@@ -160,6 +171,40 @@ export const tasksApi = {
       method: "POST",
       user,
       body: JSON.stringify({ task_id: taskId, assignee_github_handle }),
+    }),
+
+  githubSyncAll: (user: User) =>
+    request<{ success: boolean; created: number; failed: number; failed_details?: Array<{ task_id?: string; description?: string; error?: string }> }>(`/api/tasks/github-sync-all`, {
+      method: "POST",
+      user,
+    }),
+
+  developerGithubSyncAll: (user: User) =>
+    request<{ success: boolean; created: number; failed: number; failed_details?: Array<{ task_id?: string; description?: string; error?: string }> }>(`/api/tasks/developer/${user.id}/github-sync-all`, {
+      method: "POST",
+      user,
+    }),
+
+  aiSuggestStatus: (user: User, taskId: string, note?: string) =>
+    request<{
+      current_status: string;
+      suggested_status: string;
+      changed: boolean;
+      based_on_note: string;
+    }>(`/api/tasks/${taskId}/ai-suggest-status`, {
+      method: "POST",
+      user,
+      body: JSON.stringify({ note }),
+    }),
+};
+
+// ── AI Assistant ────────────────────────────────────────────────────────────
+export const helpApi = {
+  query: (user: User, question: string, mode: "question" | "command" = "question") =>
+    request<{ response: string; mode: "question" | "command" }>("/api/help/query", {
+      method: "POST",
+      user,
+      body: JSON.stringify({ question, mode }),
     }),
 };
 
