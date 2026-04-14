@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import Sidebar from "@/components/Sidebar";
 import { StatusBadge, PriorityBadge, StatCard } from "@/components/Badges";
 import { useToast } from "@/components/Toast";
-import { tasksApi, statsApi } from "@/lib/api";
+import { tasksApi, statsApi, type LeaderboardRow } from "@/lib/api";
 
 const NAV_ITEMS = [
   { href: "/dashboard/developer", icon: "🏠", label: "My Dashboard" },
@@ -18,24 +18,27 @@ export default function DeveloperDashboard() {
   const { showToast, ToastContainer } = useToast();
   const [stats, setStats] = useState<Record<string, number>>({});
   const [tasks, setTasks] = useState<any[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [githubSyncing, setGithubSyncing] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const [s, t] = await Promise.all([
+      const [s, t, lb] = await Promise.all([
         statsApi.developer(user),
         tasksApi.developerTasks(user),
+        statsApi.leaderboard(user),
       ]);
       setStats(s);
       setTasks(t);
+      setLeaderboard(lb);
     } catch (e: any) {
       showToast(e.message, "error");
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, showToast]);
 
   async function handleSyncMyGithub() {
     if (!user) return;
@@ -160,6 +163,72 @@ export default function DeveloperDashboard() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Developer Leaderboard */}
+              <div className="card" style={{ marginTop: 24 }}>
+                <div className="section-header">
+                  <h3 className="section-title">🏆 Developer Leaderboard</h3>
+                </div>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                  Team-wide performance ranking using completion rate, GitHub linkage, and AI confidence.
+                </p>
+
+                {leaderboard.length === 0 ? (
+                  <div className="empty-state" style={{ padding: 28 }}>
+                    <div className="empty-state-icon">📊</div>
+                    <h3>No leaderboard data yet</h3>
+                    <p>Assign and complete tasks to populate the leaderboard</p>
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860, fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: "var(--bg-elevated)", textAlign: "left" }}>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Rank</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Developer</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Total Tasks</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Completed</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Completion %</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>GH Linked</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Avg Confidence</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Overall Score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {leaderboard.map((row, index) => {
+                          const isCurrentUser = row.developer_id === user?.id;
+                          return (
+                            <tr
+                              key={row.developer_id}
+                              style={{
+                                borderBottom: "1px solid var(--border)",
+                                background: isCurrentUser ? "rgba(243, 154, 15, 0.12)" : "transparent",
+                              }}
+                            >
+                              <td style={{ padding: "10px 12px", fontWeight: 700 }}>#{index + 1}</td>
+                              <td style={{ padding: "10px 12px", fontWeight: isCurrentUser ? 700 : 500 }}>
+                                {row.developer}{isCurrentUser ? " (You)" : ""}
+                              </td>
+                              <td style={{ padding: "10px 12px" }}>{row.total}</td>
+                              <td style={{ padding: "10px 12px" }}>{row.completed}</td>
+                              <td style={{ padding: "10px 12px" }}>{row.completion_rate.toFixed(1)}%</td>
+                              <td style={{ padding: "10px 12px" }}>{row.github_linked}</td>
+                              <td style={{ padding: "10px 12px" }}>{row.avg_confidence.toFixed(1)}</td>
+                              <td style={{ padding: "10px 12px", fontWeight: 700, color: "var(--text-accent)" }}>
+                                {row.overall_score.toFixed(1)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <p style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
+                  Score = (Completion Rate * 0.5) + (GitHub Linked * 5) + (Avg Task Confidence * 0.2)
+                </p>
               </div>
             </>
           )}

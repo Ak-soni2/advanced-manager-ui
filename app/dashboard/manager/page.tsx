@@ -297,7 +297,7 @@ export default function ManagerOverview() {
                 )}
 
                 <p style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
-                  Score = (Completion Rate * 0.5) + (GitHub Pushes * 5) + (Avg Task Confidence * 0.2)
+                  Score = (Completion Rate * 0.5) + (GitHub issue Closed * 5) + (Avg Task Confidence * 0.2)
                 </p>
               </div>
             </>

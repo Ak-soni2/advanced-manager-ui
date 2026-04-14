@@ -1,196 +1,140 @@
 # Automated Task Manager Frontend
 
-Frontend for the Automated Task Manager system.
-This UI is built for two roles:
-
-- Manager: upload meetings, review/extract tasks, assign work, monitor team execution
-- Developer: track assigned tasks, update progress, collaborate via task threads
-
-The frontend communicates with the FastAPI backend over REST and uses header-based auth context.
+Next.js frontend for the Automated Task Manager platform. The UI provides role-based experiences for managers and developers, including extraction workflows, task execution flows, AI assistant interactions, GitHub sync controls, and performance analytics.
 
 ## Tech Stack
 
-- Framework: Next.js 16 (App Router)
-- UI: React 19 + TypeScript
-- Styling: global CSS design system (`app/globals.css`) with tokenized theme variables
-- Linting: ESLint 9 + `eslint-config-next`
-- Runtime API: browser `fetch` via centralized typed client (`lib/api.ts`)
+- Next.js 16 (App Router, Turbopack in dev)
+- React 19 + TypeScript
+- CSS token system via `app/globals.css`
+- Header-based auth context via local storage
 
-## High-Level Design (HLD)
+## Product Features
 
-### 1) Architecture
+### Manager Experience
 
-- Client-rendered dashboard app (`"use client"` pages and components)
-- Shared auth context persisted to `localStorage` (`lib/auth-context.tsx`)
-- Centralized API layer (`lib/api.ts`) to isolate backend contract details
-- Role-based navigation and redirects:
-	- anonymous -> `/login`
-	- manager -> `/dashboard/manager`
-	- developer -> `/dashboard/developer`
+- Overview metrics and status distribution
+- Transcript upload and AI extraction trigger
+- Pending-review queue for validation and assignment
+- Full task editing controls
+- Team management and developer creation
+- Bulk GitHub issue sync
+- Employee evaluation matrix
 
-### 2) Major Frontend Modules
+### Developer Experience
 
-- Auth Module
-	- Login/signup flows, context hydration, logout
-- Manager Module
-	- Overview dashboard
-	- Pending review and assignment
-	- All tasks management
-	- Meetings upload/extraction workspace
-	- Team/developer management
-- Developer Module
-	- Personal dashboard
-	- Personal task execution board
-- Shared UI Module
-	- Sidebar navigation, badges/stat widgets, toast notifications
+- Personal dashboard and urgent-task focus cards
+- Task progress actions (`confirmed -> in_progress -> done`)
+- Thread updates and status assist
+- Personal GitHub sync action
+- Team leaderboard (ranked performance matrix)
 
-### 3) Data Flow
+### Shared Experience
 
-1. User logs in from `/login`
-2. Backend returns user identity and role
-3. Auth context stores user in memory + `localStorage`
-4. UI pages call APIs through `lib/api.ts` with `X-User-Id` and `X-User-Role`
-5. UI updates local component state and shows transient feedback via toast system
+- Sidebar navigation shell
+- Role-scoped AI assistant panel
+- Toast feedback for action results and failures
 
-## Low-Level Design (LLD)
+## Architecture (HLD)
 
-### 1) Routing Structure
+1. User authenticates in `/login`.
+2. Frontend stores user in auth context + `localStorage`.
+3. Dashboard pages call backend through centralized API client (`lib/api.ts`).
+4. Backend authorization is driven by headers:
+   - `X-User-Id`
+   - `X-User-Role`
+5. UI state updates and renders cards/tables/threads.
 
-- `app/page.tsx`
-	- boot redirect page (auth gate -> role route)
-- `app/login/page.tsx`
-	- login/signup form with client-side validation and API calls
-- `app/dashboard/manager/*`
-	- manager feature pages
-- `app/dashboard/developer/*`
-	- developer feature pages
+## Low-Level Structure (LLD)
 
-### 2) Auth and Session State
-
-File: `lib/auth-context.tsx`
-
-- `AuthProvider` loads `atm_user` from `localStorage` on mount
-- `setUser` writes/removes `atm_user`
-- `logout` clears auth state and storage
-- Any page can consume `useAuth()` for role-aware rendering/actions
-
-### 3) API Client Contract Layer
-
-File: `lib/api.ts`
-
-- `request<T>()` wraps `fetch` and normalizes errors
-- Adds role/user headers through `getHeaders(user)`
-- API namespaces:
-	- `authApi`
-	- `statsApi`
-	- `meetingsApi`
-	- `tasksApi`
-
-Notable task APIs:
-
-- `githubSync`, `githubSyncAll`, `developerGithubSyncAll`
-- `aiSuggestStatus`
-- `getThread`, `appendNote`
-- `updateStatus`, `updateFull`, `confirm`, `reject`
-
-### 4) UI Composition
-
-- `components/Sidebar.tsx`
-	- role navigation shell + active state + logout
-- `components/Badges.tsx`
-	- status badge, priority badge, confidence bar, stat card
-- `components/Toast.tsx`
-	- lightweight local toast queue with auto-dismiss
-
-### 5) Styling and Theme System
-
-File: `app/globals.css`
-
-- Theme tokens via CSS variables (`:root`)
-- Shared primitives:
-	- cards, buttons, forms, tables, badges, modals, tabs
-- Layout model:
-	- fixed sidebar + topbar + content container
-- Gradient atmospheric background and orb layers via root layout
-
-### 6) Role-Specific Screens (Detailed)
-
-#### Manager Screens
-
-- `dashboard/manager/page.tsx`
-	- KPI cards, status/priority distribution, recent tasks
-	- bulk GitHub sync action with loading/lock states
-- `dashboard/manager/pending/page.tsx`
-	- review extracted tasks
-	- multi-assignee confirmation workflow
-	- create developer from modal
-- `dashboard/manager/tasks/page.tsx`
-	- full task operations: filter/search/edit/delete/thread/github sync
-	- AI status suggestion gated by thread availability
-- `dashboard/manager/meetings/page.tsx`
-	- upload transcript, trigger extraction, browse meeting history
-- `dashboard/manager/team/page.tsx`
-	- create developer and view current team
-
-#### Developer Screens
-
-- `dashboard/developer/page.tsx`
-	- personal KPI summary + urgent items
-	- own GitHub sync action
-- `dashboard/developer/tasks/page.tsx`
-	- status progression flow (confirmed -> in_progress -> done)
-	- task details modal, thread updates, AI status suggestion
-
-## Folder-Level Map
+### Folder Map
 
 ```text
 frontend/
-	app/
-		layout.tsx            # Root layout + AuthProvider + global backdrop
-		page.tsx              # Entry redirect
-		login/page.tsx        # Login + signup
-		dashboard/
-			manager/...         # Manager pages
-			developer/...       # Developer pages
-	components/
-		Sidebar.tsx
-		Badges.tsx
-		Toast.tsx
-	lib/
-		api.ts                # Backend API contracts
-		auth-context.tsx      # Client auth/session context
-	app/globals.css         # Theme + global component styles
+  app/
+    layout.tsx
+    globals.css
+    login/page.tsx
+    dashboard/
+      manager/
+      developer/
+  components/
+    Sidebar.tsx
+    Badges.tsx
+    Toast.tsx
+  lib/
+    api.ts
+    auth-context.tsx
 ```
 
-## Small but Important Implementation Details
+### Core Files
 
-- Header-based auth on every protected API call:
-	- `X-User-Id`
-	- `X-User-Role`
-- Error normalization:
-	- backend `detail` is converted to thrown JS `Error` for consistent UI handling
-- Thread UX:
-	- message count indicator appears only when messages exist
-	- AI status suggestion enabled only when thread history exists
-- GitHub sync UX:
-	- sync buttons stay visible
-	- loading state during request
-	- disabled/synced state after success to prevent re-trigger spam
-- Scroll UX:
-	- long meeting/developer lists scroll inside card containers
+- `app/layout.tsx`
+  - Root shell, background layers, auth provider
+- `app/login/page.tsx`
+  - Login/signup tabbed flow
+- `lib/auth-context.tsx`
+  - Reads/writes `atm_user` from local storage
+- `lib/api.ts`
+  - Request wrapper + all endpoint namespaces
+- `components/Sidebar.tsx`
+  - Navigation + AI assistant toggle panel
 
-## Environment Configuration
+## API Integration Details
 
-- `NEXT_PUBLIC_API_URL`
-	- Optional
-	- Defaults to `http://localhost:8000`
-	- Example:
+`lib/api.ts` namespaces:
+
+- `authApi`
+- `statsApi`
+- `meetingsApi`
+- `tasksApi`
+- `helpApi`
+
+Notable calls:
+
+- `statsApi.leaderboard()` for team ranking matrix
+- `tasksApi.githubSyncAll()` and `tasksApi.developerGithubSyncAll()`
+- `tasksApi.aiSuggestStatus()`
+- `helpApi.query()` for role-aware assistant
+
+## Leaderboard on Developer Dashboard
+
+The developer dashboard now shows full team ranking, not only personal metrics.
+
+Columns:
+
+- Rank
+- Developer
+- Total Tasks
+- Completed
+- Completion %
+- GH Linked
+- Avg Confidence
+- Overall Score
+
+Current user is highlighted with `(You)`.
+
+Scoring formula:
+
+`Score = (Completion Rate * 0.5) + (GitHub Linked * 5) + (Avg Task Confidence * 0.2)`
+
+## AI Assistant Notes
+
+- Manager assistant can access manager-wide summaries.
+- Developer assistant is restricted to developer-safe scope.
+- Command and Q&A modes are available in sidebar panel.
+
+## Environment
+
+Create `.env.local` in `frontend/`:
 
 ```bash
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_API_URL=http://172.31.112.12:8000
 ```
 
-## Run Locally
+Use your own backend origin if different.
+
+## Local Development
 
 From `frontend/`:
 
@@ -199,37 +143,49 @@ npm install
 npm run dev
 ```
 
-Open: `http://localhost:3000`
-
-If running from monorepo root:
+Or from repo root:
 
 ```bash
 npm --prefix frontend install
 npm --prefix frontend run dev
 ```
 
-## Build and Lint
+## Troubleshooting
+
+### 1) Failed to fetch / ERR_CONNECTION_REFUSED
+
+- Ensure backend is running and reachable from browser host.
+- Prefer backend bind:
 
 ```bash
-npm run lint
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+- Confirm `NEXT_PUBLIC_API_URL` matches reachable backend host.
+
+### 2) Next.js blocked dev resources (HMR/fonts)
+
+Add LAN origin to `next.config.ts`:
+
+```ts
+allowedDevOrigins: ["172.31.112.12"]
+```
+
+Restart frontend dev server.
+
+### 3) Hydration warnings from injected attributes
+
+Some browser extensions inject form attributes (for example `fdprocessedid`) before hydration. The app root layout suppresses these extension-only mismatches.
+
+## Build
+
+```bash
 npm run build
 npm run start
 ```
 
-## Backend Dependency (Contract)
+## Future Improvements
 
-This frontend expects the FastAPI backend to expose endpoints under `/api/*`, including:
-
-- `/api/auth/*`
-- `/api/stats/*`
-- `/api/meetings/*`
-- `/api/tasks/*`
-
-For full backend setup, run backend service first and then start this frontend.
-
-## Future Improvement Ideas
-
-- Replace `any` task models with strict TypeScript interfaces
-- Add request abort/cancel support for long operations
-- Add React Query/SWR for caching and automatic revalidation
-- Add route-level guards via middleware for stricter client navigation control
+- Remove remaining `any` types from dashboard and API models
+- Introduce React Query/SWR for caching and invalidation
+- Add integration tests for role-based routing and assistant visibility

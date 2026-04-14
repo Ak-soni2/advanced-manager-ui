@@ -1,12 +1,23 @@
 // lib/api.ts - Centralized API client for the Automated Task Manager backend
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 interface User {
   id: string;
   username: string;
   role: "manager" | "developer";
   github_handle?: string;
+}
+
+interface LeaderboardRow {
+  developer: string;
+  developer_id: string;
+  total: number;
+  completed: number;
+  completion_rate: number;
+  github_linked: number;
+  avg_confidence: number;
+  overall_score: number;
 }
 
 function getHeaders(user?: User | null): HeadersInit {
@@ -73,6 +84,7 @@ export const statsApi = {
   manager: (user: User) => request<Record<string, number>>("/api/stats/manager", { user }),
   developer: (user: User) =>
     request<Record<string, number>>(`/api/stats/developer/${user.id}`, { user }),
+  leaderboard: (user: User) => request<LeaderboardRow[]>("/api/leaderboard", { user }),
 };
 
 // ── Meetings ──────────────────────────────────────────────────────────────
@@ -208,4 +220,4 @@ export const helpApi = {
     }),
 };
 
-export type { User };
+export type { User, LeaderboardRow };
